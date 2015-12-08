@@ -1,5 +1,5 @@
 # Scala_Spark-BibleTextAnalysis
-CS7265_BigDataAnalysis Project.
+CS7265_BigDataAnalysis Project to be imported in IntelliJ and works on both Windows and Mac
 
 This program conducts a Latent Semantic Analysis of the Bible.
 
