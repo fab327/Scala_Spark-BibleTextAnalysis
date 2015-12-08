@@ -59,6 +59,8 @@ object ParseBible {
                          sc: SparkContext): (RDD[Vector], Map[Int, String], Map[Long, String], Map[String, Double]) = {
 
     //REQUIREMENT #2: Computes TF-IDS
+    println("------------------------------------------------------------------------------------------")
+    println("REQUIREMENT #2: Computes TF-IDS")
     val docTermFreqs = docs.mapValues(terms => {
       val termFreqsInDoc = terms.foldLeft(new HashMap[String, Int]()) {
         (map, term) => map += term -> (map.getOrElse(term, 0) + 1)

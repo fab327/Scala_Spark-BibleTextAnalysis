@@ -25,12 +25,16 @@ object RunLSA {
     val (termDocMatrix, termIds, docIds, idfs) = preprocessing(sampleSize, numTerms, sc)
 
     //REQUIREMENT #3: Conduct Singular Value Decomposition
+    println("------------------------------------------------------------------------------------------")
+    println("REQUIREMENT #3: Conduct Singular Value Decomposition")
     termDocMatrix.cache()
     val mat = new RowMatrix(termDocMatrix)
     val svd = mat.computeSVD(k, computeU = true)
     println("Singular values: " + svd.s)
 
     //REQUIREMENT #4: Finding Important Concepts
+    println("------------------------------------------------------------------------------------------")
+    println("REQUIREMENT #4: Finding Important Concepts")
     val topConceptTerms = topTermsInTopConcepts(svd, 10, 10, termIds)
     val topConceptDocs = topDocsInTopConcepts(svd, 10, 10, docIds)
     for ((terms, docs) <- topConceptTerms.zip(topConceptDocs)) {
@@ -40,23 +44,30 @@ object RunLSA {
     }
 
     //REQUIREMENT #5: Finding Term-Term Relevance
+    println("------------------------------------------------------------------------------------------")
+    println("REQUIREMENT #5: Finding Term-Term Relevance")
     val VS = multiplyByDiagonalMatrix(svd.V, svd.s)
     val normalizedVS = rowsNormalized(VS)
     val idTerms = idfs.keys.zipWithIndex.toMap
     printTopTermsForTerm(normalizedVS, "child", Map("child" -> idTerms("child")), termIds)
 
     //REQUIREMENT #6: Finding Verse-Verse Relevance
+    println("------------------------------------------------------------------------------------------")
+    println("REQUIREMENT #6: Finding Verse-Verse Relevance")
     val US = multiplyByDiagonalMatrix(svd.U, svd.s)
     val normalizedUS = rowsNormalized(US)
     val idDocs = docIds.keys.zipWithIndex.toMap
     printTopDocsForDoc(normalizedUS, "Ne 7:56", Map("Ne 7:56" -> idDocs(5)), docIds)
 
     //REQUIREMENT #7: Finding Term-Verse Relevance
-
+    println("------------------------------------------------------------------------------------------")
+    println("REQUIREMENT #7: Finding Term-Verse Relevance")
+    printTopDocsForTerm(normalizedUS, svd.V, "child", Map("child" -> idTerms("child")) ,docIds)
 
     //REQUIREMENT #8: Conducting multi-term queries
-
-
+    println("------------------------------------------------------------------------------------------")
+    println("REQUIREMENT #8: Conducting multi-term queries")
+    printRelevantDocs(Seq("child", "God"), idTerms, idfs, US, svd.V, docIds)
   }
 
   /**
@@ -74,6 +85,8 @@ object RunLSA {
     val stopWords = sc.broadcast(ParseBible.loadStopWords(".\\resources\\stopwords.txt")).value
 
     //REQUIREMENT #1: Lemmatize the whole collection
+    println("------------------------------------------------------------------------------------------")
+    println("REQUIREMENT #1: Lemmatize the whole collection")
     val lemmatized = versesContent.mapPartitions(iter => {
       val pipeline = ParseBible.createNLPPipeline()
       iter.map { case (title, contents) => (title, ParseBible.plainTextToLemmas(contents, stopWords, pipeline)) }
@@ -83,6 +96,9 @@ object RunLSA {
 
     ParseBible.termDocumentMatrix(filtered, stopWords, numTerms, sc)
   }
+
+  def isContent(line: String) = !isVerse(line)
+  def isVerse(line: String) = line.contains("$$")
 
   def topTermsInTopConcepts(svd: SingularValueDecomposition[RowMatrix, Matrix], numConcepts: Int,
                             numTerms: Int, termIds: Map[Int, String]): Seq[Seq[(String, Double)]] = {
@@ -108,10 +124,6 @@ object RunLSA {
     }
     topDocs
   }
-
-  def isContent(line: String) = !isVerse(line)
-
-  def isVerse(line: String) = line.contains("$$")
 
   def printTopTermsForTerm(normalizedVS: BDenseMatrix[Double],
                            term: String, idTerms: Map[String, Int], termIds: Map[Int, String]) {
@@ -182,6 +194,34 @@ object RunLSA {
     */
   def topDocsForTerm(US: RowMatrix, V: Matrix, termId: Int): Seq[(Double, Long)] = {
     val termRowArr = row(V, termId).toArray
+    val termRowVec = Matrices.dense(termRowArr.length, 1, termRowArr)
+
+    // Compute scores against every doc
+    val docScores = US.multiply(termRowVec)
+
+    // Find the docs with the highest scores
+    val allDocWeights = docScores.rows.map(_.toArray(0)).zipWithUniqueId
+    allDocWeights.top(10)
+  }
+
+  def printRelevantDocs(terms: Seq[String], idTerms: Map[String, Int], idfs: Map[String, Double],
+                        US: RowMatrix, V: Matrix, docIds: Map[Long, String]): Unit = {
+    val queryVec = termsToQueryVector(terms, idTerms, idfs);
+    printIdWeights(topDocsForTermQuery(US, V, queryVec), docIds);
+  }
+
+  def termsToQueryVector(terms: Seq[String], idTerms: Map[String, Int], idfs: Map[String, Double])
+  : BSparseVector[Double] = {
+    val indices = terms.map(idTerms(_)).toArray
+    val values = terms.map(idfs(_)).toArray
+    new BSparseVector[Double](indices, values, idTerms.size)
+  }
+
+  def topDocsForTermQuery(US: RowMatrix, V: Matrix, query: BSparseVector[Double])
+  : Seq[(Double, Long)] = {
+    val breezeV = new BDenseMatrix[Double](V.numRows, V.numCols, V.toArray)
+    val termRowArr = (breezeV.t * query).toArray
+
     val termRowVec = Matrices.dense(termRowArr.length, 1, termRowArr)
 
     // Compute scores against every doc
