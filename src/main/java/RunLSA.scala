@@ -77,12 +77,20 @@ object RunLSA {
   def preprocessing(sampleSize: Double, numTerms: Int, sc: SparkContext)
   : (RDD[Vector], Map[Int, String], Map[Long, String], Map[String, Double]) = {
 
-    val BibleRDD = sc.textFile(".\\resources\\KJV.txt")
+    var BibleRDD = sc.textFile(".\\resources\\KJV.txt")
+    if (determineOS().equals("Mac")) {
+      BibleRDD = sc.textFile("./resources/KJV.txt")
+    }
     val verses = BibleRDD.filter(line => isVerse(line)).map(a => a.substring(3))
     val contents = BibleRDD.filter(line => !isVerse(line))
     val versesContent = verses.zip(contents)
 
-    val stopWords = sc.broadcast(ParseBible.loadStopWords(".\\resources\\stopwords.txt")).value
+    var stopWordsPath = ".\\resources\\stopwords.txt"
+    if (determineOS().equals("Mac")) {
+      stopWordsPath = "./resources/stopwords.txt"
+    }
+    val stopWords = sc.broadcast(ParseBible.loadStopWords(stopWordsPath)).value
+
 
     //REQUIREMENT #1: Lemmatize the whole collection
     println("------------------------------------------------------------------------------------------")
@@ -287,4 +295,15 @@ object RunLSA {
       Vectors.dense(vec.toArray.map(_ / length))
     }))
   }
+
+  def determineOS(): String = {
+    val operatingSystem = System.getProperty("os.name");
+    if (operatingSystem.contains("Windows"))
+      "Windows";
+    else if (operatingSystem.contains("Mac"))
+      "Mac";
+    else
+      "";
+  }
+
 }
